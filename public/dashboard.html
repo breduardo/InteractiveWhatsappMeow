@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InteractiveWhatsMeow | Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/public/styles.css" />
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script defer src="/public/config.js"></script>
+    <script defer src="/public/dashboard.js"></script>
+  </head>
+  <body data-page="dashboard">
+    <header class="command-bar">
+      <div class="command-bar__inner">
+        <div class="brand-cluster">
+          <div class="brand-mark"><i class="fa-brands fa-whatsapp"></i></div>
+          <div>
+            <p class="brand-kicker">InteractiveWhatsMeow</p>
+            <p class="brand-title">Controle visual da API Go</p>
+          </div>
+        </div>
+        <nav class="command-nav">
+          <a class="command-link" href="/dashboard" data-nav="dashboard"><i class="fa-solid fa-chart-line"></i>Dashboard</a>
+          <a class="command-link" href="/chat" data-nav="chat"><i class="fa-solid fa-comments"></i>Chat</a>
+          <a class="command-link" href="/analytics" data-nav="analytics"><i class="fa-solid fa-chart-column"></i>Analytics</a>
+          <a class="command-link" href="/settings" data-nav="settings"><i class="fa-solid fa-sliders"></i>Settings</a>
+        </nav>
+        <div class="command-status" data-global-status data-state="inactive">
+          <div class="command-status__icon"><i class="fa-solid fa-key"></i></div>
+          <div>
+            <p class="command-status__label">Acesso</p>
+            <p class="command-status__text" data-api-status-text>API key ausente</p>
+            <span class="command-status__meta" data-api-status-meta>Configure em Settings</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-shell">
+      <section class="hero-grid">
+        <article class="hero-card">
+          <p class="eyebrow">Visão operacional</p>
+          <h1 class="hero-title">Monitore sessões, recupere QR e pareie números sem sair do backend Go.</h1>
+          <p class="hero-copy">
+            Esta interface replica a linguagem visual do painel antigo, mas trabalha apenas com os contratos existentes da API atual.
+            O dashboard resume sessões ativas, volume recente, webhooks e atividade de mensagens.
+          </p>
+          <div class="hero-actions">
+            <a class="button" href="/chat"><i class="fa-solid fa-paper-plane"></i> Abrir central de chat</a>
+            <a class="button button--ghost" href="/settings"><i class="fa-solid fa-gear"></i> Ajustar credenciais</a>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Provisionamento</p>
+              <h2 class="panel-title">Nova sessão</h2>
+            </div>
+            <span class="inline-chip"><i class="fa-solid fa-server"></i> Multi-sessão</span>
+          </div>
+          <div class="panel-content">
+            <form id="sessionForm" class="field-grid">
+              <div class="field-grid field-grid--two">
+                <div class="field">
+                  <label for="sessionId">Session ID</label>
+                  <input id="sessionId" name="sessionId" placeholder="cliente-principal" required />
+                </div>
+                <div class="field">
+                  <label for="sessionName">Nome</label>
+                  <input id="sessionName" name="name" placeholder="Operação Comercial" />
+                </div>
+              </div>
+              <div class="field-grid field-grid--two">
+                <div class="field">
+                  <label for="loginMethod">Método</label>
+                  <select id="loginMethod" name="loginMethod">
+                    <option value="qr">QR code</option>
+                    <option value="pair_code">Pairing code</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="sessionPhone">Telefone</label>
+                  <input id="sessionPhone" name="phone" placeholder="5511999999999" />
+                </div>
+              </div>
+              <button class="button" type="submit" id="sessionSubmit"><i class="fa-solid fa-plus"></i> Criar sessão</button>
+            </form>
+          </div>
+        </article>
+      </section>
+
+      <section class="metric-grid" id="metricGrid"></section>
+
+      <section class="content-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Sessões</p>
+              <h2 class="panel-title">Estado atual da operação</h2>
+            </div>
+            <div class="panel-actions">
+              <button class="button button--soft" id="refreshDashboard"><i class="fa-solid fa-rotate"></i> Atualizar</button>
+            </div>
+          </div>
+          <div class="panel-content panel-content--flush panel-scroll">
+            <div class="session-list" id="sessionList">
+              <div class="empty-state">Nenhuma sessão encontrada.</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Atividade recente</p>
+              <h2 class="panel-title">Últimas mensagens persistidas</h2>
+            </div>
+          </div>
+          <div class="panel-content panel-content--flush panel-scroll">
+            <div class="timeline" id="activityFeed">
+              <div class="empty-state">Ainda não há eventos persistidos em `messages`.</div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <div class="modal" id="sessionModal" aria-hidden="true">
+      <div class="modal__card">
+        <div class="modal__header">
+          <div>
+            <p class="modal-kicker" id="modalKicker">Sessão</p>
+            <h2 class="modal-title" id="modalTitle">Detalhes</h2>
+          </div>
+          <button class="modal__close" type="button" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal__body">
+          <div class="field" id="pairPhoneField" style="display: none; margin-bottom: 1rem;">
+            <label for="pairPhoneInput">Telefone para gerar o pair code</label>
+            <input id="pairPhoneInput" placeholder="5511999999999" />
+          </div>
+          <div class="modal__result" id="modalResult">
+            <div class="empty-state">Nenhum conteúdo carregado.</div>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <div class="top-actions" id="modalActions"></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

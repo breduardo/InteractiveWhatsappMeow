@@ -1,0 +1,24 @@
+# Go
+bin/
+dist/
+coverage.out
+*.coverprofile
+
+# Local Go caches
+.gocache/
+.gomodcache/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime artifacts
+tmp/
+*.log

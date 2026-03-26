@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InteractiveWhatsMeow | Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/public/styles.css" />
+    <script defer src="/public/config.js"></script>
+    <script defer src="/public/settings.js"></script>
+  </head>
+  <body data-page="settings">
+    <header class="command-bar">
+      <div class="command-bar__inner">
+        <div class="brand-cluster">
+          <div class="brand-mark"><i class="fa-solid fa-sliders"></i></div>
+          <div>
+            <p class="brand-kicker">Settings</p>
+            <p class="brand-title">Preferências locais e webhooks</p>
+          </div>
+        </div>
+        <nav class="command-nav">
+          <a class="command-link" href="/dashboard" data-nav="dashboard"><i class="fa-solid fa-chart-line"></i>Dashboard</a>
+          <a class="command-link" href="/chat" data-nav="chat"><i class="fa-solid fa-comments"></i>Chat</a>
+          <a class="command-link" href="/analytics" data-nav="analytics"><i class="fa-solid fa-chart-column"></i>Analytics</a>
+          <a class="command-link" href="/settings" data-nav="settings"><i class="fa-solid fa-sliders"></i>Settings</a>
+        </nav>
+        <div class="command-status" data-global-status data-state="inactive">
+          <div class="command-status__icon"><i class="fa-solid fa-key"></i></div>
+          <div>
+            <p class="command-status__label">Acesso</p>
+            <p class="command-status__text" data-api-status-text>API key ausente</p>
+            <span class="command-status__meta" data-api-status-meta>Configure em Settings</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-shell">
+      <section class="hero-grid">
+        <article class="hero-card">
+          <p class="eyebrow">Persistência local</p>
+          <h1 class="hero-title">Centralize a API key, a sessão padrão e os intervalos de polling.</h1>
+          <p class="hero-copy">
+            Settings trabalha em duas camadas: preferências locais da interface no navegador e webhooks reais persistidos no servidor.
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Roadmap</p>
+              <h2 class="panel-title">Fora do escopo deste MVP</h2>
+            </div>
+          </div>
+          <div class="panel-content settings-list">
+            <div class="settings-list__item disabled-card">General, API tuning, backup e notificações aparecem aqui apenas como placeholders visuais.</div>
+            <div class="settings-list__item disabled-card">Sem WebSocket, contatos, broadcast, dashboard realtime ou exports avançados nesta fase.</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="settings-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Credenciais</p>
+              <h2 class="panel-title">Acesso local da UI</h2>
+            </div>
+          </div>
+          <div class="panel-content">
+            <form id="preferencesForm" class="field-grid">
+              <div class="field">
+                <label for="apiKeyInput">X-API-Key</label>
+                <input id="apiKeyInput" placeholder="dev-change-me" />
+              </div>
+              <div class="field">
+                <label for="defaultSessionSelect">Sessão padrão</label>
+                <select id="defaultSessionSelect"></select>
+              </div>
+              <div class="field-grid field-grid--two">
+                <div class="field">
+                  <label for="dashboardInterval">Dashboard poll (ms)</label>
+                  <input id="dashboardInterval" type="number" min="5000" step="1000" />
+                </div>
+                <div class="field">
+                  <label for="chatInterval">Chats poll (ms)</label>
+                  <input id="chatInterval" type="number" min="3000" step="1000" />
+                </div>
+              </div>
+              <div class="field-grid field-grid--two">
+                <div class="field">
+                  <label for="messageInterval">Mensagens poll (ms)</label>
+                  <input id="messageInterval" type="number" min="3000" step="1000" />
+                </div>
+                <div class="field">
+                  <label for="analyticsInterval">Analytics poll (ms)</label>
+                  <input id="analyticsInterval" type="number" min="10000" step="1000" />
+                </div>
+              </div>
+              <button class="button" type="submit"><i class="fa-solid fa-floppy-disk"></i> Salvar preferências</button>
+            </form>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Webhooks</p>
+              <h2 class="panel-title">Cadastro e escopo de eventos</h2>
+            </div>
+          </div>
+          <div class="panel-content">
+            <form id="webhookForm" class="field-grid">
+              <div class="field">
+                <label for="webhookSessionSelect">Sessão do webhook</label>
+                <select id="webhookSessionSelect"></select>
+              </div>
+              <div class="field">
+                <label for="webhookUrl">URL</label>
+                <input id="webhookUrl" placeholder="https://example.com/webhook" />
+              </div>
+              <div class="checkbox-group">
+                <p class="checkbox-group__title">Eventos do MVP</p>
+                <div class="checkbox-grid">
+                  <label class="checkbox"><input type="checkbox" value="session.qr_updated" checked /> session.qr_updated</label>
+                  <label class="checkbox"><input type="checkbox" value="session.connected" checked /> session.connected</label>
+                  <label class="checkbox"><input type="checkbox" value="session.disconnected" checked /> session.disconnected</label>
+                  <label class="checkbox"><input type="checkbox" value="message.received" checked /> message.received</label>
+                  <label class="checkbox"><input type="checkbox" value="message.sent" checked /> message.sent</label>
+                  <label class="checkbox"><input type="checkbox" value="message.status_updated" checked /> message.status_updated</label>
+                </div>
+              </div>
+              <button class="button" type="submit"><i class="fa-solid fa-link"></i> Criar webhook</button>
+            </form>
+          </div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Webhooks ativos</p>
+              <h2 class="panel-title">Entregas configuradas</h2>
+            </div>
+            <button class="button button--soft" id="refreshWebhooks"><i class="fa-solid fa-rotate"></i> Atualizar</button>
+          </div>
+          <div class="panel-content panel-content--flush">
+            <div class="webhook-list" id="webhookList">
+              <div class="empty-state">Nenhum webhook cadastrado.</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Preferências locais</p>
+              <h2 class="panel-title">Estado salvo no navegador</h2>
+            </div>
+          </div>
+          <div class="panel-content">
+            <div class="settings-list" id="preferencesPreview">
+              <div class="settings-list__item">As preferências aparecerão aqui após o primeiro salvamento.</div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

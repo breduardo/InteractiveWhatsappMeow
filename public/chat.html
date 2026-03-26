@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InteractiveWhatsMeow | Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/public/styles.css" />
+    <script defer src="/public/config.js"></script>
+    <script defer src="/public/chat.js"></script>
+  </head>
+  <body data-page="chat">
+    <header class="command-bar">
+      <div class="command-bar__inner">
+        <div class="brand-cluster">
+          <div class="brand-mark"><i class="fa-solid fa-comments"></i></div>
+          <div>
+            <p class="brand-kicker">Mensageria</p>
+            <p class="brand-title">Inbox adaptada ao histórico da API</p>
+          </div>
+        </div>
+        <nav class="command-nav">
+          <a class="command-link" href="/dashboard" data-nav="dashboard"><i class="fa-solid fa-chart-line"></i>Dashboard</a>
+          <a class="command-link" href="/chat" data-nav="chat"><i class="fa-solid fa-comments"></i>Chat</a>
+          <a class="command-link" href="/analytics" data-nav="analytics"><i class="fa-solid fa-chart-column"></i>Analytics</a>
+          <a class="command-link" href="/settings" data-nav="settings"><i class="fa-solid fa-sliders"></i>Settings</a>
+        </nav>
+        <div class="command-status" data-global-status data-state="inactive">
+          <div class="command-status__icon"><i class="fa-solid fa-key"></i></div>
+          <div>
+            <p class="command-status__label">Acesso</p>
+            <p class="command-status__text" data-api-status-text>API key ausente</p>
+            <span class="command-status__meta" data-api-status-meta>Configure em Settings</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-shell">
+      <section class="chat-shell">
+        <aside class="chat-sidebar">
+          <div class="chat-sidebar__header">
+            <p class="section-kicker">Sessão e filtros</p>
+            <h1 class="chat-title">Conversas agrupadas</h1>
+            <div class="field" style="margin-top: 1rem;">
+              <label for="chatSessionSelect">Sessão</label>
+              <select id="chatSessionSelect"></select>
+            </div>
+            <div class="field" style="margin-top: 0.85rem;">
+              <label for="chatSearch">Buscar conversa</label>
+              <input id="chatSearch" class="search-input" placeholder="5511..., grupo, sessão..." />
+            </div>
+            <form class="field-grid" id="quickChatForm" style="margin-top: 0.85rem;">
+              <div class="field">
+                <label for="quickChatTarget">Destino rápido</label>
+                <input id="quickChatTarget" placeholder="5511999999999" />
+              </div>
+              <button class="button button--ghost button--full" type="submit"><i class="fa-solid fa-plus"></i> Abrir conversa manual</button>
+            </form>
+          </div>
+          <div class="chat-sidebar__scroll" id="chatList">
+            <div class="empty-state">Selecione uma sessão para carregar as conversas.</div>
+          </div>
+        </aside>
+
+        <section class="chat-thread">
+          <div class="chat-thread__header">
+            <div>
+              <p class="section-kicker">Conversa ativa</p>
+              <h2 class="section-title" id="threadTitle">Nenhuma conversa selecionada</h2>
+              <p class="muted" id="threadMeta">Escolha um chat à esquerda para ver o histórico persistido.</p>
+            </div>
+            <div class="top-actions">
+              <button class="button button--soft" id="reloadMessages"><i class="fa-solid fa-rotate"></i> Atualizar</button>
+            </div>
+          </div>
+
+          <div class="message-list" id="messageList">
+            <div class="empty-state">Sem conversa selecionada.</div>
+          </div>
+
+          <form class="message-composer" id="composerForm">
+            <div class="composer-mode" id="composerMode"></div>
+            <div class="field">
+              <label for="composerInput">Mensagem ou legenda</label>
+              <textarea id="composerInput" class="composer-input" placeholder="Digite a mensagem, legenda da mídia ou texto da edição."></textarea>
+            </div>
+            <div class="composer-row" style="margin-top: 0.9rem;">
+              <div class="field">
+                <label for="composerFile">Anexo</label>
+                <input id="composerFile" type="file" />
+              </div>
+              <div class="composer-actions">
+                <button class="button button--soft" type="button" id="cancelComposerMode">Limpar modo</button>
+                <button class="button" type="submit" id="composerSubmit"><i class="fa-solid fa-paper-plane"></i> Enviar</button>
+              </div>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

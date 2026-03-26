@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InteractiveWhatsMeow | Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/public/styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script defer src="/public/config.js"></script>
+    <script defer src="/public/analytics.js"></script>
+  </head>
+  <body data-page="analytics">
+    <header class="command-bar">
+      <div class="command-bar__inner">
+        <div class="brand-cluster">
+          <div class="brand-mark"><i class="fa-solid fa-chart-column"></i></div>
+          <div>
+            <p class="brand-kicker">Analytics</p>
+            <p class="brand-title">Volume, séries diárias e top chats</p>
+          </div>
+        </div>
+        <nav class="command-nav">
+          <a class="command-link" href="/dashboard" data-nav="dashboard"><i class="fa-solid fa-chart-line"></i>Dashboard</a>
+          <a class="command-link" href="/chat" data-nav="chat"><i class="fa-solid fa-comments"></i>Chat</a>
+          <a class="command-link" href="/analytics" data-nav="analytics"><i class="fa-solid fa-chart-column"></i>Analytics</a>
+          <a class="command-link" href="/settings" data-nav="settings"><i class="fa-solid fa-sliders"></i>Settings</a>
+        </nav>
+        <div class="command-status" data-global-status data-state="inactive">
+          <div class="command-status__icon"><i class="fa-solid fa-key"></i></div>
+          <div>
+            <p class="command-status__label">Acesso</p>
+            <p class="command-status__text" data-api-status-text>API key ausente</p>
+            <span class="command-status__meta" data-api-status-meta>Configure em Settings</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-shell">
+      <section class="hero-grid">
+        <article class="hero-card">
+          <p class="eyebrow">Leitura agregada</p>
+          <h1 class="hero-title">Métricas derivadas direto das tabelas `sessions` e `messages`.</h1>
+          <p class="hero-copy">
+            A página adapta o painel antigo para o escopo do MVP atual: totais por período, série diária, top chats e distribuição por sessão.
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Filtros</p>
+              <h2 class="panel-title">Recorte analítico</h2>
+            </div>
+          </div>
+          <div class="panel-content field-grid">
+            <div class="field">
+              <label for="analyticsSessionSelect">Sessão</label>
+              <select id="analyticsSessionSelect"></select>
+            </div>
+            <div class="field">
+              <label for="analyticsRangeSelect">Janela</label>
+              <select id="analyticsRangeSelect">
+                <option value="7d">Últimos 7 dias</option>
+                <option value="30d">Últimos 30 dias</option>
+              </select>
+            </div>
+            <button class="button" id="refreshAnalytics"><i class="fa-solid fa-rotate"></i> Atualizar analytics</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="analytics-cards" id="analyticsMetrics"></section>
+
+      <section class="analytics-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Série diária</p>
+              <h2 class="panel-title">Mensagens por dia</h2>
+            </div>
+          </div>
+          <div class="panel-content">
+            <div class="chart-wrap">
+              <canvas id="volumeChart"></canvas>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Distribuição</p>
+              <h2 class="panel-title">Mensagens por sessão</h2>
+            </div>
+          </div>
+          <div class="panel-content">
+            <div class="chart-wrap" style="min-height: 260px;">
+              <canvas id="sessionChart"></canvas>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Top chats</p>
+              <h2 class="panel-title">Conversas com mais volume</h2>
+            </div>
+          </div>
+          <div class="panel-content panel-content--flush">
+            <div class="stack-list" id="topChatsList">
+              <div class="empty-state">Sem dados suficientes para ranquear chats.</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Breakdown</p>
+              <h2 class="panel-title">Sessões no período</h2>
+            </div>
+          </div>
+          <div class="panel-content panel-content--flush">
+            <div class="panel-scroll">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Sessão</th>
+                    <th>Status</th>
+                    <th>Total</th>
+                    <th>Inbound</th>
+                    <th>Outbound</th>
+                  </tr>
+                </thead>
+                <tbody id="sessionBreakdownBody">
+                  <tr>
+                    <td colspan="5">Nenhum dado encontrado.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

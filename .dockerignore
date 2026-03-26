@@ -1,0 +1,15 @@
+.git
+.gitignore
+.gocache
+.gomodcache
+.env
+.env.local
+.env.development
+.env.test
+.DS_Store
+bin
+dist
+tmp
+coverage.out
+*.log
+
