@@ -31,11 +31,14 @@ type fakeSessionService struct {
 	listResult   []store.Session
 	getResult    *store.Session
 	qrResult     *session.QRCodeResult
+	openQRResult *session.OpenQRSessionResult
+	openQRErr    error
 	pairResult   *session.PairCodeResult
 	reconnect    *store.Session
 	verify       *session.VerifyNumberResult
 
 	lastGetQRSessionID     string
+	lastOpenQRSessionID    string
 	lastReconnectSessionID string
 }
 
@@ -54,6 +57,11 @@ func (f *fakeSessionService) GetSession(context.Context, string) (*store.Session
 func (f *fakeSessionService) GetQRCode(_ context.Context, sessionID string) (*session.QRCodeResult, error) {
 	f.lastGetQRSessionID = sessionID
 	return f.qrResult, nil
+}
+
+func (f *fakeSessionService) OpenQRCode(_ context.Context, sessionID string) (*session.OpenQRSessionResult, error) {
+	f.lastOpenQRSessionID = sessionID
+	return f.openQRResult, f.openQRErr
 }
 
 func (f *fakeSessionService) GeneratePairCode(context.Context, string, string) (*session.PairCodeResult, error) {
@@ -439,6 +447,74 @@ func TestRouterStaticRoutes(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected status 200 for %s, got %d", route, rec.Code)
 		}
+	}
+}
+
+func TestRouterOpenQRCode(t *testing.T) {
+	sessionService := &fakeSessionService{
+		openQRResult: &session.OpenQRSessionResult{
+			Session: &store.Session{
+				SessionID: "alpha",
+				Status:    store.SessionStatusInitializing,
+			},
+			QRCode: &session.QRCodeResult{
+				SessionID: "alpha",
+				QRCode:    "qr-payload",
+			},
+		},
+	}
+	router := NewRouter(RouterDependencies{
+		Logger:         zerolog.Nop(),
+		AuthValidator:  fakeValidator{},
+		SessionService: sessionService,
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/alpha/qr", nil)
+	req.Header.Set("X-API-Key", "test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if sessionService.lastOpenQRSessionID != "alpha" {
+		t.Fatalf("expected open qr session id alpha, got %s", sessionService.lastOpenQRSessionID)
+	}
+
+	var body session.OpenQRSessionResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Session == nil || body.Session.SessionID != "alpha" {
+		t.Fatalf("unexpected open qr session payload: %+v", body)
+	}
+	if body.QRCode == nil || body.QRCode.QRCode != "qr-payload" {
+		t.Fatalf("unexpected qr payload: %+v", body.QRCode)
+	}
+}
+
+func TestRouterOpenQRCodeConflict(t *testing.T) {
+	router := NewRouter(RouterDependencies{
+		Logger:         zerolog.Nop(),
+		AuthValidator:  fakeValidator{},
+		SessionService: &fakeSessionService{openQRErr: session.ErrSessionConnected},
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/alpha/qr", nil)
+	req.Header.Set("X-API-Key", "test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d", rec.Code)
 	}
 }
 

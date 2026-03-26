@@ -143,6 +143,38 @@ func (r *SessionRepository) UpdateState(ctx context.Context, params UpdateSessio
 	return session, nil
 }
 
+func (r *SessionRepository) ResetForQRCode(ctx context.Context, sessionID string) (*Session, error) {
+	row := r.db.QueryRowContext(
+		ctx,
+		`UPDATE sessions
+		 SET login_method = $2,
+		     status = $3,
+		     device_jid = NULL,
+		     qr_code = NULL,
+		     qr_expires_at = NULL,
+		     last_error = '',
+		     updated_at = NOW()
+		 WHERE session_id = $1
+		   AND deleted_at IS NULL
+		 RETURNING id, session_id, name, login_method, phone, COALESCE(device_jid, ''), status,
+		           COALESCE(qr_code, ''), qr_expires_at, COALESCE(last_error, ''),
+		           created_at, updated_at, deleted_at`,
+		sessionID,
+		LoginMethodQR,
+		SessionStatusInitializing,
+	)
+
+	session, err := scanSession(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reset session for qr: %w", err)
+	}
+
+	return session, nil
+}
+
 func (r *SessionRepository) MarkDeleted(ctx context.Context, sessionID string) error {
 	result, err := r.db.ExecContext(
 		ctx,

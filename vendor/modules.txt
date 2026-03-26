@@ -2,6 +2,9 @@
 ## explicit; go 1.20
 filippo.io/edwards25519
 filippo.io/edwards25519/field
+# github.com/DATA-DOG/go-sqlmock v1.5.2
+## explicit; go 1.15
+github.com/DATA-DOG/go-sqlmock
 # github.com/beeper/argo-go v1.1.2
 ## explicit; go 1.23.0
 github.com/beeper/argo-go/block

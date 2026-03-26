@@ -25,7 +25,7 @@ func Load() (Config, error) {
 		AppEnv:                getEnv("APP_ENV", "development"),
 		Addr:                  getEnv("ADDR", ":3000"),
 		DatabaseURL:           strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		APIKey:                getEnv("API_KEY", "dev-change-me"),
+		APIKey:                getEnv("API_KEY", "local-dev-api-key"),
 		WebhookBatchSize:      getEnvInt("WEBHOOK_BATCH_SIZE", 25),
 		WebhookMaxAttempts:    getEnvInt("WEBHOOK_MAX_ATTEMPTS", 5),
 		WebhookPollInterval:   getEnvDuration("WEBHOOK_POLL_INTERVAL", 2*time.Second),

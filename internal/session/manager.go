@@ -12,7 +12,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
 	waStore "go.mau.fi/whatsmeow/store"
-	waSQLStore "go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -29,6 +28,7 @@ var (
 	ErrNumberNotOnWhatsApp  = errors.New("number is not on WhatsApp")
 	ErrLoginMethodInvalid   = errors.New("invalid login method")
 	ErrPairCodeNotAvailable = errors.New("pairing flow is not ready yet")
+	ErrSessionConnected     = errors.New("session already connected")
 )
 
 type SessionRepository interface {
@@ -36,6 +36,7 @@ type SessionRepository interface {
 	List(ctx context.Context) ([]store.Session, error)
 	Get(ctx context.Context, sessionID string) (*store.Session, error)
 	UpdateState(ctx context.Context, params store.UpdateSessionStateParams) (*store.Session, error)
+	ResetForQRCode(ctx context.Context, sessionID string) (*store.Session, error)
 	MarkDeleted(ctx context.Context, sessionID string) error
 }
 
@@ -49,16 +50,22 @@ type WebhookEmitter interface {
 	Emit(ctx context.Context, sessionID, eventType string, data interface{}) error
 }
 
+type DeviceContainer interface {
+	NewDevice() *waStore.Device
+	GetDevice(ctx context.Context, jid types.JID) (*waStore.Device, error)
+}
+
 type Manager struct {
 	displayName string
 	sessions    SessionRepository
 	messages    MessageRepository
 	webhooks    WebhookEmitter
-	container   *waSQLStore.Container
+	container   DeviceContainer
 	logger      zerolog.Logger
 
-	mu       sync.RWMutex
-	runtimes map[string]*runtimeSession
+	mu                 sync.RWMutex
+	runtimes           map[string]*runtimeSession
+	launchPendingLogin func(context.Context, *runtimeSession, string)
 }
 
 type runtimeSession struct {
@@ -90,6 +97,11 @@ type QRCodeResult struct {
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 }
 
+type OpenQRSessionResult struct {
+	Session *store.Session `json:"session"`
+	QRCode  *QRCodeResult  `json:"qr,omitempty"`
+}
+
 type PairCodeResult struct {
 	SessionID   string `json:"sessionId"`
 	Phone       string `json:"phone"`
@@ -109,10 +121,10 @@ func NewManager(
 	sessions SessionRepository,
 	messagesRepo MessageRepository,
 	webhooks WebhookEmitter,
-	container *waSQLStore.Container,
+	container DeviceContainer,
 	logger zerolog.Logger,
 ) *Manager {
-	return &Manager{
+	manager := &Manager{
 		displayName: displayName,
 		sessions:    sessions,
 		messages:    messagesRepo,
@@ -121,6 +133,12 @@ func NewManager(
 		logger:      logger,
 		runtimes:    make(map[string]*runtimeSession),
 	}
+
+	manager.launchPendingLogin = func(ctx context.Context, runtimeSession *runtimeSession, sessionID string) {
+		go manager.startPendingLogin(ctx, runtimeSession, sessionID)
+	}
+
+	return manager
 }
 
 func (m *Manager) Rehydrate(ctx context.Context) error {
@@ -189,7 +207,7 @@ func (m *Manager) CreateSession(ctx context.Context, input CreateSessionInput) (
 		return nil, err
 	}
 
-	go m.startPendingLogin(context.Background(), runtimeSession, record.SessionID)
+	m.launchPendingLogin(context.Background(), runtimeSession, record.SessionID)
 
 	result := &CreateSessionResult{Session: record}
 
@@ -291,6 +309,61 @@ func (m *Manager) GeneratePairCode(ctx context.Context, sessionID, phone string)
 	}, nil
 }
 
+func (m *Manager) OpenQRCode(ctx context.Context, sessionID string) (*OpenQRSessionResult, error) {
+	record, err := m.sessions.Get(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if record.DeletedAt != nil || record.Status == store.SessionStatusDeleted {
+		return nil, store.ErrNotFound
+	}
+
+	if m.isSessionConnected(record) {
+		return nil, ErrSessionConnected
+	}
+
+	if record.Status == store.SessionStatusQRReady && strings.TrimSpace(record.QRCode) != "" {
+		if record.QRExpiresAt == nil || record.QRExpiresAt.After(time.Now().UTC()) {
+			return &OpenQRSessionResult{
+				Session: record,
+				QRCode: &QRCodeResult{
+					SessionID: record.SessionID,
+					QRCode:    record.QRCode,
+					ExpiresAt: record.QRExpiresAt,
+				},
+			}, nil
+		}
+	}
+
+	if err := m.disconnectRuntime(sessionID); err != nil {
+		return nil, err
+	}
+	if err := m.deleteStoredDevice(ctx, record.DeviceJID); err != nil {
+		return nil, err
+	}
+
+	record, err = m.sessions.ResetForQRCode(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("reset session for qr: %w", err)
+	}
+
+	runtimeSession, err := m.attachNewRuntime(*record)
+	if err != nil {
+		return nil, err
+	}
+
+	m.launchPendingLogin(context.Background(), runtimeSession, record.SessionID)
+
+	result := &OpenQRSessionResult{
+		Session: record,
+	}
+	if qr, err := m.GetQRCode(ctx, sessionID); err == nil {
+		result.QRCode = qr
+	}
+
+	return result, nil
+}
+
 func (m *Manager) ReconnectSession(ctx context.Context, sessionID string) (*store.Session, error) {
 	record, err := m.sessions.Get(ctx, sessionID)
 	if err != nil {
@@ -313,7 +386,7 @@ func (m *Manager) ReconnectSession(ctx context.Context, sessionID string) (*stor
 		if err != nil {
 			return nil, err
 		}
-		go m.startPendingLogin(context.Background(), runtimeSession, record.SessionID)
+		m.launchPendingLogin(context.Background(), runtimeSession, record.SessionID)
 	}
 
 	updated, updateErr := m.sessions.UpdateState(ctx, store.UpdateSessionStateParams{
@@ -612,6 +685,9 @@ func (m *Manager) resolveDirectTarget(ctx context.Context, runtimeSession *runti
 }
 
 func (m *Manager) attachNewRuntime(record store.Session) (*runtimeSession, error) {
+	if m.container == nil {
+		return nil, fmt.Errorf("whatsmeow container is not configured")
+	}
 	device := m.container.NewDevice()
 	runtimeSession := m.newRuntime(record, device)
 
@@ -623,6 +699,9 @@ func (m *Manager) attachNewRuntime(record store.Session) (*runtimeSession, error
 }
 
 func (m *Manager) attachExistingRuntime(record store.Session) (*runtimeSession, error) {
+	if m.container == nil {
+		return nil, fmt.Errorf("whatsmeow container is not configured")
+	}
 	deviceJID, err := types.ParseJID(record.DeviceJID)
 	if err != nil {
 		return nil, fmt.Errorf("parse stored device jid: %w", err)
@@ -733,6 +812,10 @@ func (m *Manager) consumeQRChannel(sessionID string, runtimeSession *runtimeSess
 }
 
 func (m *Manager) handleEvent(sessionID string, runtimeSession *runtimeSession, evt interface{}) {
+	if runtimeSession != nil && !m.isCurrentRuntime(sessionID, runtimeSession) {
+		return
+	}
+
 	switch event := evt.(type) {
 	case *events.Connected:
 		_ = runtimeSession.client.SendPresence(context.Background(), types.PresenceAvailable)
@@ -879,9 +962,60 @@ func (m *Manager) ensurePendingRuntime(record *store.Session) (*runtimeSession, 
 	if err != nil {
 		return nil, err
 	}
-	go m.startPendingLogin(context.Background(), runtimeSession, record.SessionID)
+	m.launchPendingLogin(context.Background(), runtimeSession, record.SessionID)
 
 	return runtimeSession, nil
+}
+
+func (m *Manager) isCurrentRuntime(sessionID string, runtimeSession *runtimeSession) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	current := m.runtimes[sessionID]
+	return current == runtimeSession
+}
+
+func (m *Manager) isSessionConnected(record *store.Session) bool {
+	if record == nil {
+		return false
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	runtimeSession := m.runtimes[record.SessionID]
+	if runtimeSession == nil {
+		return false
+	}
+
+	return record.Status == store.SessionStatusConnected || runtimeSession.client.IsConnected()
+}
+
+func (m *Manager) deleteStoredDevice(ctx context.Context, deviceJID string) error {
+	deviceJID = strings.TrimSpace(deviceJID)
+	if deviceJID == "" || m.container == nil {
+		return nil
+	}
+
+	jid, err := types.ParseJID(deviceJID)
+	if err != nil {
+		m.logger.Warn().Err(err).Str("deviceJid", deviceJID).Msg("failed to parse stored device jid while reopening qr")
+		return nil
+	}
+
+	device, err := m.container.GetDevice(ctx, jid)
+	if err != nil {
+		return fmt.Errorf("get stored device: %w", err)
+	}
+	if device == nil {
+		return nil
+	}
+
+	if err := device.Delete(ctx); err != nil {
+		return fmt.Errorf("delete stored device: %w", err)
+	}
+
+	return nil
 }
 
 func (m *Manager) requireConnected(ctx context.Context, sessionID string) (*runtimeSession, *store.Session, error) {

@@ -3,16 +3,16 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-interactivewhatsmeow}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-interactivewhatsmeow}",
+          "pg_isready -U ${POSTGRES_USER:?set POSTGRES_USER in .env} -d ${POSTGRES_DB:?set POSTGRES_DB in .env}",
         ]
       interval: 5s
       timeout: 5s
@@ -30,8 +30,8 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       ADDR: :3000
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-interactivewhatsmeow}?sslmode=disable
-      API_KEY: ${API_KEY:-dev-change-me}
+      DATABASE_URL: postgres://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}?sslmode=disable
+      API_KEY: ${API_KEY:?set API_KEY in .env}
       WEBHOOK_BATCH_SIZE: ${WEBHOOK_BATCH_SIZE:-25}
       WEBHOOK_MAX_ATTEMPTS: ${WEBHOOK_MAX_ATTEMPTS:-5}
       WEBHOOK_POLL_INTERVAL: ${WEBHOOK_POLL_INTERVAL:-2s}
@@ -48,4 +48,3 @@ services:
 
 volumes:
   postgres_data:
-

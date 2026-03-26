@@ -36,6 +36,7 @@ type SessionService interface {
 	ListSessions(ctx context.Context) ([]store.Session, error)
 	GetSession(ctx context.Context, sessionID string) (*store.Session, error)
 	GetQRCode(ctx context.Context, sessionID string) (*session.QRCodeResult, error)
+	OpenQRCode(ctx context.Context, sessionID string) (*session.OpenQRSessionResult, error)
 	GeneratePairCode(ctx context.Context, sessionID, phone string) (*session.PairCodeResult, error)
 	ReconnectSession(ctx context.Context, sessionID string) (*store.Session, error)
 	DeleteSession(ctx context.Context, sessionID string) error
@@ -85,6 +86,7 @@ func NewRouter(deps RouterDependencies) http.Handler {
 			r.Get("/sessions", listSessionsHandler(deps.SessionService))
 			r.Get("/sessions/{sessionId}", getSessionHandler(deps.SessionService))
 			r.Get("/sessions/{sessionId}/qr", getQRCodeHandler(deps.SessionService))
+			r.Post("/sessions/{sessionId}/qr", openQRCodeHandler(deps.SessionService))
 			r.Post("/sessions/{sessionId}/pair-code", generatePairCodeHandler(deps.SessionService))
 			r.Post("/sessions/{sessionId}/reconnect", reconnectSessionHandler(deps.SessionService))
 			r.Delete("/sessions/{sessionId}", deleteSessionHandler(deps.SessionService))
@@ -168,6 +170,17 @@ func getQRCodeHandler(service SessionService) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, qr)
+	}
+}
+
+func openQRCodeHandler(service SessionService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		result, err := service.OpenQRCode(r.Context(), chi.URLParam(r, "sessionId"))
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 
@@ -433,6 +446,8 @@ func writeDomainError(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, err)
 	case errors.Is(err, session.ErrSessionExists):
+		writeError(w, http.StatusConflict, err)
+	case errors.Is(err, session.ErrSessionConnected):
 		writeError(w, http.StatusConflict, err)
 	case errors.Is(err, session.ErrSessionNotConnected):
 		writeError(w, http.StatusConflict, err)

@@ -1,6 +1,11 @@
 document.addEventListener("DOMContentLoaded", () => {
   const state = {
     sessions: [],
+    stopQRWatcher: null,
+    qrSessionId: "",
+    qrLastStatus: "",
+    qrLastCode: "",
+    qrLastSummaryKey: "",
   };
 
   const metricGrid = document.getElementById("metricGrid");
@@ -17,7 +22,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const pairPhoneField = document.getElementById("pairPhoneField");
   const pairPhoneInput = document.getElementById("pairPhoneInput");
 
+  function stopQRWatcher() {
+    if (typeof state.stopQRWatcher === "function") {
+      state.stopQRWatcher();
+    }
+    state.stopQRWatcher = null;
+    state.qrSessionId = "";
+    state.qrLastStatus = "";
+    state.qrLastCode = "";
+    state.qrLastSummaryKey = "";
+  }
+
   function openModal(title, kicker) {
+    stopQRWatcher();
     modalTitle.textContent = title;
     modalKicker.textContent = kicker;
     modalResult.innerHTML = '<div class="empty-state">Carregando...</div>';
@@ -28,6 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function closeModal() {
+    stopQRWatcher();
     sessionModal.classList.remove("is-open");
     document.body.classList.remove("modal-open");
   }
@@ -59,6 +77,44 @@ document.addEventListener("DOMContentLoaded", () => {
     activityFeed.innerHTML = App.missingApiKeyMarkup("A timeline de atividade será carregada assim que a X-API-Key estiver configurada.");
   }
 
+  function getSessionQRMeta(session) {
+    if (session.qrExpiresAt) {
+      return `QR expira ${App.formatRelative(session.qrExpiresAt)}`;
+    }
+    if (session.status === "initializing") {
+      return "Gerando novo QR";
+    }
+    if (session.status === "pairing") {
+      return "Sessão em pareamento";
+    }
+    return "Sem QR ativo";
+  }
+
+  function getQRAction(session) {
+    switch (session.status) {
+      case "qr_ready":
+      case "pairing":
+      case "initializing":
+        return {
+          action: "qr",
+          label: "Ver QR",
+          icon: "fa-qrcode",
+          tone: "button--soft",
+        };
+      case "disconnected":
+      case "logged_out":
+      case "error":
+        return {
+          action: "reopen-qr",
+          label: "Reabrir QR",
+          icon: "fa-qrcode",
+          tone: "button--soft",
+        };
+      default:
+        return null;
+    }
+  }
+
   function renderSessions(sessions) {
     if (!sessions.length) {
       sessionList.innerHTML = '<div class="empty-state">Nenhuma sessão criada até o momento.</div>';
@@ -68,7 +124,15 @@ document.addEventListener("DOMContentLoaded", () => {
     sessionList.innerHTML = sessions
       .map((session) => {
         const phone = session.phone ? App.escapeHTML(session.phone) : "Sem telefone";
-        const qrMeta = session.qrExpiresAt ? `QR expira ${App.formatRelative(session.qrExpiresAt)}` : "Sem QR ativo";
+        const qrMeta = getSessionQRMeta(session);
+        const qrAction = getQRAction(session);
+        const qrActionMarkup = qrAction
+          ? `<button class="button ${qrAction.tone}" type="button" data-action="${App.escapeHTML(qrAction.action)}" data-session-id="${App.escapeHTML(session.sessionId)}"><i class="fa-solid ${App.escapeHTML(qrAction.icon)}"></i> ${App.escapeHTML(qrAction.label)}</button>`
+          : "";
+        const lastErrorMarkup = session.lastError
+          ? `<p class="timeline-item__meta" style="margin-top:0.85rem;color:#b91c1c;">${App.escapeHTML(session.lastError)}</p>`
+          : "";
+
         return `
           <article class="session-card">
             <div class="session-card__top">
@@ -88,9 +152,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 <span class="split-stat__value" style="font-size: 0.95rem;">${App.escapeHTML(qrMeta)}</span>
               </div>
             </div>
+            ${lastErrorMarkup}
             <div class="session-actions" style="margin-top: 1rem;">
               <button class="button button--ghost" type="button" data-action="open-chat" data-session-id="${App.escapeHTML(session.sessionId)}"><i class="fa-solid fa-comments"></i> Chat</button>
-              <button class="button button--soft" type="button" data-action="qr" data-session-id="${App.escapeHTML(session.sessionId)}"><i class="fa-solid fa-qrcode"></i> QR</button>
+              ${qrActionMarkup}
               <button class="button button--soft" type="button" data-action="pair" data-session-id="${App.escapeHTML(session.sessionId)}" data-phone="${App.escapeHTML(session.phone || "")}"><i class="fa-solid fa-mobile-screen"></i> Pair</button>
               <button class="button button--soft" type="button" data-action="reconnect" data-session-id="${App.escapeHTML(session.sessionId)}"><i class="fa-solid fa-plug-circle-bolt"></i> Reconnect</button>
               <button class="button button--danger" type="button" data-action="delete" data-session-id="${App.escapeHTML(session.sessionId)}"><i class="fa-solid fa-trash"></i> Remover</button>
@@ -135,6 +200,126 @@ document.addEventListener("DOMContentLoaded", () => {
     renderActivity(summary.recentActivity || []);
   }
 
+  function renderQRCodeCanvas(qrCode) {
+    modalResult.innerHTML = '<div class="qr-box"><div id="qrCanvas"></div></div>';
+    if (window.QRCode) {
+      new window.QRCode(document.getElementById("qrCanvas"), {
+        text: qrCode,
+        width: 220,
+        height: 220,
+      });
+      return;
+    }
+
+    modalResult.innerHTML = `<div class="code-box">${App.escapeHTML(qrCode)}</div>`;
+  }
+
+  function renderQRWaitingState(sessionRecord, message) {
+    const statusLabel = sessionRecord && sessionRecord.status ? App.statusLabel(sessionRecord.status) : "Inicializando";
+    modalResult.innerHTML = `<div class="empty-state">${App.escapeHTML(message)}</div>`;
+    modalActions.innerHTML = `<span class="subtle-pill">${App.escapeHTML(statusLabel)}</span>`;
+  }
+
+  function renderQRCodeModalContent(sessionId, qr, sessionRecord) {
+    renderQRCodeCanvas(qr.qrCode);
+    const statusLabel = sessionRecord && sessionRecord.status ? App.statusLabel(sessionRecord.status) : "QR pronto";
+    modalActions.innerHTML = `
+      <span class="subtle-pill">${App.escapeHTML(statusLabel)}</span>
+      <span class="subtle-pill">Expira ${qr.expiresAt ? App.formatRelative(qr.expiresAt) : "sem prazo informado"}</span>
+    `;
+    state.qrLastCode = qr.qrCode;
+    state.qrLastStatus = sessionRecord && sessionRecord.status ? sessionRecord.status : "qr_ready";
+    state.qrSessionId = sessionId;
+  }
+
+  function renderQRRecoveryState(sessionRecord) {
+    const sessionId = sessionRecord.sessionId;
+    const detail = sessionRecord.lastError
+      ? `${App.statusLabel(sessionRecord.status)}: ${sessionRecord.lastError}`
+      : `Sessão ${App.statusLabel(sessionRecord.status)}.`;
+
+    modalResult.innerHTML = `<div class="empty-state">${App.escapeHTML(detail)} Gere um novo QR para reconectar.</div>`;
+    modalActions.innerHTML = `
+      <span class="subtle-pill">${App.escapeHTML(App.statusLabel(sessionRecord.status))}</span>
+      <button class="button button--soft" type="button" id="reopenQRCodeButton"><i class="fa-solid fa-qrcode"></i> Reabrir QR</button>
+    `;
+
+    const button = document.getElementById("reopenQRCodeButton");
+    if (button) {
+      button.addEventListener("click", () => {
+        reopenQRCode(sessionId).catch((error) => {
+          modalResult.innerHTML = `<div class="empty-state">${App.escapeHTML(error.message)}</div>`;
+        });
+      });
+    }
+  }
+
+  async function syncQRCodeModal(sessionId) {
+    const sessionRecord = await App.apiFetch(`/sessions/${encodeURIComponent(sessionId)}`);
+    const summaryKey = [sessionRecord.status, sessionRecord.qrExpiresAt || "", sessionRecord.lastError || ""].join("|");
+
+    if (summaryKey !== state.qrLastSummaryKey) {
+      state.qrLastSummaryKey = summaryKey;
+      await loadSummary();
+    }
+
+    if (sessionRecord.status === "connected") {
+      App.notify(`Sessão ${sessionId} conectada.`, "success");
+      await loadSummary();
+      closeModal();
+      return;
+    }
+
+    let qr = null;
+    try {
+      qr = await App.apiFetch(`/sessions/${encodeURIComponent(sessionId)}/qr`);
+    } catch (error) {
+      if (error.status !== 404) {
+        throw error;
+      }
+    }
+
+    if (qr && qr.qrCode) {
+      renderQRCodeModalContent(sessionId, qr, sessionRecord);
+      return;
+    }
+
+    if (sessionRecord.status === "initializing") {
+      renderQRWaitingState(sessionRecord, "Gerando QR...");
+      return;
+    }
+
+    if (sessionRecord.status === "qr_ready" || sessionRecord.status === "pairing") {
+      renderQRWaitingState(sessionRecord, "Aguardando QR ficar disponível...");
+      return;
+    }
+
+    if (["disconnected", "logged_out", "error"].includes(sessionRecord.status)) {
+      renderQRRecoveryState(sessionRecord);
+      return;
+    }
+
+    renderQRWaitingState(sessionRecord, `Status atual: ${App.statusLabel(sessionRecord.status)}`);
+  }
+
+  function startQRCodeWatcher(sessionId) {
+    stopQRWatcher();
+    state.qrSessionId = sessionId;
+    state.stopQRWatcher = App.startPolling(() => syncQRCodeModal(sessionId), 2000);
+  }
+
+  function showQRCodeFlow(sessionId, initialQRCode) {
+    openModal(`QR code · ${sessionId}`, "Pareamento");
+
+    if (initialQRCode && initialQRCode.qrCode) {
+      renderQRCodeModalContent(sessionId, initialQRCode, { status: "qr_ready" });
+    } else {
+      renderQRWaitingState({ status: "initializing" }, "Gerando QR...");
+    }
+
+    startQRCodeWatcher(sessionId);
+  }
+
   async function handleCreateSession(event) {
     event.preventDefault();
     if (!App.hasApiKey()) {
@@ -160,8 +345,8 @@ document.addEventListener("DOMContentLoaded", () => {
       sessionForm.reset();
       await loadSummary();
 
-      if (result && result.qr) {
-        renderQRCodeModal(payload.sessionId, result.qr);
+      if (result && payload.loginMethod === "qr") {
+        showQRCodeFlow(payload.sessionId, result.qr || null);
       } else if (result && result.pairCode) {
         renderPairCodeModal(payload.sessionId, result.pairCode);
       }
@@ -172,21 +357,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function renderQRCodeModal(sessionId, qr) {
-    openModal(`QR code · ${sessionId}`, "Pareamento");
-    modalResult.innerHTML = '<div class="qr-box"><div id="qrCanvas"></div></div>';
-    if (window.QRCode) {
-      new window.QRCode(document.getElementById("qrCanvas"), {
-        text: qr.qrCode,
-        width: 220,
-        height: 220,
-      });
-    } else {
-      modalResult.innerHTML = `<div class="code-box">${App.escapeHTML(qr.qrCode)}</div>`;
-    }
-    modalActions.innerHTML = `<span class="subtle-pill">Expira ${qr.expiresAt ? App.formatRelative(qr.expiresAt) : "sem prazo informado"}</span>`;
-  }
-
   function renderPairCodeModal(sessionId, pairCode) {
     openModal(`Pairing code · ${sessionId}`, "Pareamento");
     modalResult.innerHTML = `<div class="code-box">${App.escapeHTML(pairCode.pairingCode)}</div>`;
@@ -194,13 +364,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadQRCode(sessionId) {
-    openModal(`QR code · ${sessionId}`, "Pareamento");
-    try {
-      const qr = await App.apiFetch(`/sessions/${encodeURIComponent(sessionId)}/qr`);
-      renderQRCodeModal(sessionId, qr);
-    } catch (error) {
-      modalResult.innerHTML = `<div class="empty-state">${App.escapeHTML(error.message)}</div>`;
+    showQRCodeFlow(sessionId, null);
+  }
+
+  async function reopenQRCode(sessionId) {
+    openModal(`QR code · ${sessionId}`, "Repareamento");
+    renderQRWaitingState({ status: "initializing" }, "Gerando novo QR...");
+
+    const result = await App.apiFetch(`/sessions/${encodeURIComponent(sessionId)}/qr`, {
+      method: "POST",
+    });
+
+    if (result && result.qr) {
+      renderQRCodeModalContent(sessionId, result.qr, result.session || { status: "qr_ready" });
     }
+
+    await loadSummary();
+    startQRCodeWatcher(sessionId);
   }
 
   async function openPairCodeFlow(sessionId, phone) {
@@ -262,7 +442,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     if (action === "qr") {
-      loadQRCode(sessionId);
+      loadQRCode(sessionId).catch((error) => App.notify(error.message, "danger"));
+      return;
+    }
+    if (action === "reopen-qr") {
+      reopenQRCode(sessionId).catch((error) => App.notify(error.message, "danger"));
       return;
     }
     if (action === "pair") {

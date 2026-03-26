@@ -64,8 +64,8 @@ O volume nomeado `postgres_data` preserva:
 Se preferir rodar localmente:
 
 ```bash
-export DATABASE_URL='postgres://postgres:postgres@localhost:5432/interactivewhatsmeow?sslmode=disable'
-export API_KEY='dev-change-me'
+export DATABASE_URL='postgres://postgres:replace_with_local_postgres_password@localhost:5432/interactivewhatsmeow?sslmode=disable'
+export API_KEY='replace_with_local_api_key'
 export ADDR=':3000'
 
 go run ./cmd/api

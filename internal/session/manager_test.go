@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
+	waStore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
@@ -17,6 +18,7 @@ import (
 
 type fakeSessionRepo struct {
 	sessions map[string]*store.Session
+	resetIDs []string
 }
 
 func (r *fakeSessionRepo) Create(context.Context, store.CreateSessionParams) (*store.Session, error) {
@@ -70,6 +72,23 @@ func (r *fakeSessionRepo) MarkDeleted(_ context.Context, sessionID string) error
 	return nil
 }
 
+func (r *fakeSessionRepo) ResetForQRCode(_ context.Context, sessionID string) (*store.Session, error) {
+	sessionRecord, ok := r.sessions[sessionID]
+	if !ok {
+		return nil, store.ErrNotFound
+	}
+
+	r.resetIDs = append(r.resetIDs, sessionID)
+	sessionRecord.LoginMethod = store.LoginMethodQR
+	sessionRecord.Status = store.SessionStatusInitializing
+	sessionRecord.DeviceJID = ""
+	sessionRecord.QRCode = ""
+	sessionRecord.QRExpiresAt = nil
+	sessionRecord.LastError = ""
+
+	return sessionRecord, nil
+}
+
 type fakeMessageRepo struct {
 	savedMessages []store.SaveMessageParams
 	statusCalls   []struct {
@@ -120,6 +139,38 @@ type fakeWebhookEmitter struct {
 	}
 }
 
+type fakeWAContainer struct {
+	devices        map[string]*waStore.Device
+	deletedDevices []string
+	newDeviceCount int
+}
+
+func (c *fakeWAContainer) NewDevice() *waStore.Device {
+	c.newDeviceCount++
+	device := &waStore.Device{}
+	device.Container = c
+	return device
+}
+
+func (c *fakeWAContainer) GetDevice(_ context.Context, jid types.JID) (*waStore.Device, error) {
+	if c.devices == nil {
+		return nil, nil
+	}
+	return c.devices[jid.String()], nil
+}
+
+func (c *fakeWAContainer) PutDevice(context.Context, *waStore.Device) error {
+	return nil
+}
+
+func (c *fakeWAContainer) DeleteDevice(_ context.Context, device *waStore.Device) error {
+	if device != nil && device.ID != nil {
+		c.deletedDevices = append(c.deletedDevices, device.ID.String())
+		delete(c.devices, device.ID.String())
+	}
+	return nil
+}
+
 func (f *fakeWebhookEmitter) Emit(_ context.Context, sessionID, eventType string, data interface{}) error {
 	f.events = append(f.events, struct {
 		SessionID string
@@ -156,6 +207,137 @@ func TestManagerGetQRCode(t *testing.T) {
 	}
 	if result.QRCode != "qr-code" {
 		t.Fatalf("expected qr-code, got %s", result.QRCode)
+	}
+}
+
+func TestManagerOpenQRCodeReturnsExistingActiveQR(t *testing.T) {
+	expiresAt := time.Now().UTC().Add(30 * time.Second)
+	repo := &fakeSessionRepo{
+		sessions: map[string]*store.Session{
+			"alpha": {
+				SessionID:   "alpha",
+				LoginMethod: store.LoginMethodQR,
+				Status:      store.SessionStatusQRReady,
+				QRCode:      "qr-code",
+				QRExpiresAt: &expiresAt,
+			},
+		},
+	}
+
+	manager := NewManager(
+		"InteractiveWhatsMeow",
+		repo,
+		&fakeMessageRepo{},
+		&fakeWebhookEmitter{},
+		&fakeWAContainer{},
+		zerolog.Nop(),
+	)
+
+	result, err := manager.OpenQRCode(context.Background(), "alpha")
+	if err != nil {
+		t.Fatalf("open qr code: %v", err)
+	}
+	if len(repo.resetIDs) != 0 {
+		t.Fatalf("expected no reset call, got %+v", repo.resetIDs)
+	}
+	if result.QRCode == nil || result.QRCode.QRCode != "qr-code" {
+		t.Fatalf("unexpected qr result: %+v", result.QRCode)
+	}
+}
+
+func TestManagerOpenQRCodeRejectsConnectedSession(t *testing.T) {
+	repo := &fakeSessionRepo{
+		sessions: map[string]*store.Session{
+			"alpha": {
+				SessionID: "alpha",
+				Status:    store.SessionStatusConnected,
+			},
+		},
+	}
+	container := &fakeWAContainer{}
+	manager := NewManager(
+		"InteractiveWhatsMeow",
+		repo,
+		&fakeMessageRepo{},
+		&fakeWebhookEmitter{},
+		container,
+		zerolog.Nop(),
+	)
+
+	runtimeSession := manager.newRuntime(
+		store.Session{SessionID: "alpha", LoginMethod: store.LoginMethodQR},
+		container.NewDevice(),
+	)
+	manager.runtimes["alpha"] = runtimeSession
+
+	if _, err := manager.OpenQRCode(context.Background(), "alpha"); err != ErrSessionConnected {
+		t.Fatalf("expected ErrSessionConnected, got %v", err)
+	}
+}
+
+func TestManagerOpenQRCodeResetsDisconnectedSession(t *testing.T) {
+	deviceJID := types.JID{User: "5511999999999", Device: 1, Server: types.DefaultUserServer}
+	container := &fakeWAContainer{
+		devices: map[string]*waStore.Device{},
+	}
+	storedDevice := &waStore.Device{ID: &deviceJID}
+	storedDevice.Container = container
+	container.devices[deviceJID.String()] = storedDevice
+
+	repo := &fakeSessionRepo{
+		sessions: map[string]*store.Session{
+			"alpha": {
+				SessionID:   "alpha",
+				LoginMethod: store.LoginMethodPairCode,
+				Status:      store.SessionStatusDisconnected,
+				DeviceJID:   deviceJID.String(),
+				QRCode:      "old-qr",
+				LastError:   "socket closed",
+			},
+		},
+	}
+
+	manager := NewManager(
+		"InteractiveWhatsMeow",
+		repo,
+		&fakeMessageRepo{},
+		&fakeWebhookEmitter{},
+		container,
+		zerolog.Nop(),
+	)
+
+	launched := false
+	manager.launchPendingLogin = func(context.Context, *runtimeSession, string) {
+		launched = true
+	}
+
+	result, err := manager.OpenQRCode(context.Background(), "alpha")
+	if err != nil {
+		t.Fatalf("open qr code: %v", err)
+	}
+
+	if !launched {
+		t.Fatal("expected pending login launch")
+	}
+	if len(repo.resetIDs) != 1 || repo.resetIDs[0] != "alpha" {
+		t.Fatalf("expected reset for alpha, got %+v", repo.resetIDs)
+	}
+	if len(container.deletedDevices) != 1 || container.deletedDevices[0] != deviceJID.String() {
+		t.Fatalf("expected deleted stored device %s, got %+v", deviceJID.String(), container.deletedDevices)
+	}
+
+	sessionRecord := repo.sessions["alpha"]
+	if sessionRecord.LoginMethod != store.LoginMethodQR {
+		t.Fatalf("expected login method qr, got %s", sessionRecord.LoginMethod)
+	}
+	if sessionRecord.Status != store.SessionStatusInitializing {
+		t.Fatalf("expected initializing status, got %s", sessionRecord.Status)
+	}
+	if sessionRecord.DeviceJID != "" || sessionRecord.QRCode != "" || sessionRecord.LastError != "" {
+		t.Fatalf("expected cleared session state, got %+v", sessionRecord)
+	}
+	if result.Session == nil || result.Session.SessionID != "alpha" {
+		t.Fatalf("unexpected result session: %+v", result.Session)
 	}
 }
 
