@@ -73,6 +73,13 @@ func NewRouter(deps RouterDependencies) http.Handler {
 	router.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(deps.AuthValidator))
 
+		r.Route("/api", func(r chi.Router) {
+			r.Get("/test", legacyTestHandler())
+			r.Post("/message/text", legacySendTextHandler(deps.MessageService))
+			r.Get("/qr", legacyQRCodeHandler(deps.SessionService))
+			r.Get("/reconnect", legacyReconnectHandler(deps.SessionService))
+		})
+
 		r.Route("/v1", func(r chi.Router) {
 			r.Post("/sessions", createSessionHandler(deps.SessionService))
 			r.Get("/sessions", listSessionsHandler(deps.SessionService))

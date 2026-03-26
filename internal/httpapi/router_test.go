@@ -34,37 +34,42 @@ type fakeSessionService struct {
 	pairResult   *session.PairCodeResult
 	reconnect    *store.Session
 	verify       *session.VerifyNumberResult
+
+	lastGetQRSessionID     string
+	lastReconnectSessionID string
 }
 
-func (f fakeSessionService) CreateSession(context.Context, session.CreateSessionInput) (*session.CreateSessionResult, error) {
+func (f *fakeSessionService) CreateSession(context.Context, session.CreateSessionInput) (*session.CreateSessionResult, error) {
 	return f.createResult, nil
 }
 
-func (f fakeSessionService) ListSessions(context.Context) ([]store.Session, error) {
+func (f *fakeSessionService) ListSessions(context.Context) ([]store.Session, error) {
 	return f.listResult, nil
 }
 
-func (f fakeSessionService) GetSession(context.Context, string) (*store.Session, error) {
+func (f *fakeSessionService) GetSession(context.Context, string) (*store.Session, error) {
 	return f.getResult, nil
 }
 
-func (f fakeSessionService) GetQRCode(context.Context, string) (*session.QRCodeResult, error) {
+func (f *fakeSessionService) GetQRCode(_ context.Context, sessionID string) (*session.QRCodeResult, error) {
+	f.lastGetQRSessionID = sessionID
 	return f.qrResult, nil
 }
 
-func (f fakeSessionService) GeneratePairCode(context.Context, string, string) (*session.PairCodeResult, error) {
+func (f *fakeSessionService) GeneratePairCode(context.Context, string, string) (*session.PairCodeResult, error) {
 	return f.pairResult, nil
 }
 
-func (f fakeSessionService) ReconnectSession(context.Context, string) (*store.Session, error) {
+func (f *fakeSessionService) ReconnectSession(_ context.Context, sessionID string) (*store.Session, error) {
+	f.lastReconnectSessionID = sessionID
 	return f.reconnect, nil
 }
 
-func (f fakeSessionService) DeleteSession(context.Context, string) error {
+func (f *fakeSessionService) DeleteSession(context.Context, string) error {
 	return nil
 }
 
-func (f fakeSessionService) VerifyNumber(context.Context, string, string) (*session.VerifyNumberResult, error) {
+func (f *fakeSessionService) VerifyNumber(context.Context, string, string) (*session.VerifyNumberResult, error) {
 	return f.verify, nil
 }
 
@@ -74,25 +79,32 @@ type fakeMessageService struct {
 	replyResult *messages.SendResult
 	editResult  *messages.SendResult
 	listResult  []store.Message
+
+	lastSendTextSessionID string
+	lastSendTextTo        string
+	lastSendTextText      string
 }
 
-func (f fakeMessageService) SendText(context.Context, string, string, string) (*messages.SendResult, error) {
+func (f *fakeMessageService) SendText(_ context.Context, sessionID, to, text string) (*messages.SendResult, error) {
+	f.lastSendTextSessionID = sessionID
+	f.lastSendTextTo = to
+	f.lastSendTextText = text
 	return f.textResult, nil
 }
 
-func (f fakeMessageService) SendMedia(context.Context, string, string, string, string, string, []byte) (*messages.SendResult, error) {
+func (f *fakeMessageService) SendMedia(context.Context, string, string, string, string, string, []byte) (*messages.SendResult, error) {
 	return f.mediaResult, nil
 }
 
-func (f fakeMessageService) Reply(context.Context, string, string, string, string) (*messages.SendResult, error) {
+func (f *fakeMessageService) Reply(context.Context, string, string, string, string) (*messages.SendResult, error) {
 	return f.replyResult, nil
 }
 
-func (f fakeMessageService) Edit(context.Context, string, string, string, string) (*messages.SendResult, error) {
+func (f *fakeMessageService) Edit(context.Context, string, string, string, string) (*messages.SendResult, error) {
 	return f.editResult, nil
 }
 
-func (f fakeMessageService) List(context.Context, messages.ListInput) ([]store.Message, error) {
+func (f *fakeMessageService) List(context.Context, messages.ListInput) ([]store.Message, error) {
 	return f.listResult, nil
 }
 
@@ -101,15 +113,15 @@ type fakeWebhookService struct {
 	listResult   []store.Webhook
 }
 
-func (f fakeWebhookService) CreateWebhook(context.Context, webhooks.CreateWebhookInput) (*store.Webhook, error) {
+func (f *fakeWebhookService) CreateWebhook(context.Context, webhooks.CreateWebhookInput) (*store.Webhook, error) {
 	return f.createResult, nil
 }
 
-func (f fakeWebhookService) ListWebhooks(context.Context, *string) ([]store.Webhook, error) {
+func (f *fakeWebhookService) ListWebhooks(context.Context, *string) ([]store.Webhook, error) {
 	return f.listResult, nil
 }
 
-func (f fakeWebhookService) DeleteWebhook(context.Context, int64) error {
+func (f *fakeWebhookService) DeleteWebhook(context.Context, int64) error {
 	return nil
 }
 
@@ -119,15 +131,15 @@ type fakeReadService struct {
 	analytics *store.AnalyticsSummary
 }
 
-func (f fakeReadService) GetDashboardSummary(context.Context) (*store.DashboardSummary, error) {
+func (f *fakeReadService) GetDashboardSummary(context.Context) (*store.DashboardSummary, error) {
 	return f.dashboard, nil
 }
 
-func (f fakeReadService) ListChats(context.Context, string) ([]store.ChatSummary, error) {
+func (f *fakeReadService) ListChats(context.Context, string) ([]store.ChatSummary, error) {
 	return f.chats, nil
 }
 
-func (f fakeReadService) GetAnalyticsSummary(context.Context, store.AnalyticsSummaryInput) (*store.AnalyticsSummary, error) {
+func (f *fakeReadService) GetAnalyticsSummary(context.Context, store.AnalyticsSummaryInput) (*store.AnalyticsSummary, error) {
 	return f.analytics, nil
 }
 
@@ -135,7 +147,7 @@ func TestRouterCreateSession(t *testing.T) {
 	router := NewRouter(RouterDependencies{
 		Logger:        zerolog.Nop(),
 		AuthValidator: fakeValidator{},
-		SessionService: fakeSessionService{
+		SessionService: &fakeSessionService{
 			createResult: &session.CreateSessionResult{
 				Session: &store.Session{
 					SessionID:   "alpha",
@@ -144,9 +156,9 @@ func TestRouterCreateSession(t *testing.T) {
 				},
 			},
 		},
-		MessageService: fakeMessageService{},
-		WebhookService: fakeWebhookService{},
-		ReadService:    fakeReadService{},
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(`{"sessionId":"alpha","loginMethod":"qr"}`))
@@ -179,8 +191,8 @@ func TestRouterSendMedia(t *testing.T) {
 	router := NewRouter(RouterDependencies{
 		Logger:         zerolog.Nop(),
 		AuthValidator:  fakeValidator{},
-		SessionService: fakeSessionService{},
-		MessageService: fakeMessageService{
+		SessionService: &fakeSessionService{},
+		MessageService: &fakeMessageService{
 			mediaResult: &messages.SendResult{
 				SessionID:   "alpha",
 				MessageID:   "wamid-1",
@@ -191,8 +203,8 @@ func TestRouterSendMedia(t *testing.T) {
 				Status:      store.MessageStatusSent,
 			},
 		},
-		WebhookService: fakeWebhookService{},
-		ReadService:    fakeReadService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
 	})
 
 	body := &bytes.Buffer{}
@@ -242,8 +254,8 @@ func TestRouterListMessages(t *testing.T) {
 	router := NewRouter(RouterDependencies{
 		Logger:         zerolog.Nop(),
 		AuthValidator:  fakeValidator{},
-		SessionService: fakeSessionService{},
-		MessageService: fakeMessageService{
+		SessionService: &fakeSessionService{},
+		MessageService: &fakeMessageService{
 			listResult: []store.Message{
 				{
 					ID:                12,
@@ -259,8 +271,8 @@ func TestRouterListMessages(t *testing.T) {
 				},
 			},
 		},
-		WebhookService: fakeWebhookService{},
-		ReadService:    fakeReadService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/messages?sessionId=alpha&limit=10&cursor="+strconv.FormatInt(99, 10), nil)
@@ -289,10 +301,10 @@ func TestRouterDashboardSummary(t *testing.T) {
 	router := NewRouter(RouterDependencies{
 		Logger:         zerolog.Nop(),
 		AuthValidator:  fakeValidator{},
-		SessionService: fakeSessionService{},
-		MessageService: fakeMessageService{},
-		WebhookService: fakeWebhookService{},
-		ReadService: fakeReadService{
+		SessionService: &fakeSessionService{},
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService: &fakeReadService{
 			dashboard: &store.DashboardSummary{
 				Totals: store.DashboardTotals{
 					TotalSessions:     2,
@@ -332,10 +344,10 @@ func TestRouterListChats(t *testing.T) {
 	router := NewRouter(RouterDependencies{
 		Logger:         zerolog.Nop(),
 		AuthValidator:  fakeValidator{},
-		SessionService: fakeSessionService{},
-		MessageService: fakeMessageService{},
-		WebhookService: fakeWebhookService{},
-		ReadService: fakeReadService{
+		SessionService: &fakeSessionService{},
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService: &fakeReadService{
 			chats: []store.ChatSummary{{
 				SessionID:       "alpha",
 				ChatJID:         "5511999999999@s.whatsapp.net",
@@ -371,10 +383,10 @@ func TestRouterAnalyticsSummary(t *testing.T) {
 	router := NewRouter(RouterDependencies{
 		Logger:         zerolog.Nop(),
 		AuthValidator:  fakeValidator{},
-		SessionService: fakeSessionService{},
-		MessageService: fakeMessageService{},
-		WebhookService: fakeWebhookService{},
-		ReadService: fakeReadService{
+		SessionService: &fakeSessionService{},
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService: &fakeReadService{
 			analytics: &store.AnalyticsSummary{
 				Range: "7d",
 				Totals: store.AnalyticsTotals{
@@ -411,10 +423,10 @@ func TestRouterStaticRoutes(t *testing.T) {
 	router := NewRouter(RouterDependencies{
 		Logger:         zerolog.Nop(),
 		AuthValidator:  fakeValidator{},
-		SessionService: fakeSessionService{},
-		MessageService: fakeMessageService{},
-		WebhookService: fakeWebhookService{},
-		ReadService:    fakeReadService{},
+		SessionService: &fakeSessionService{},
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
 		StaticFS:       os.DirFS("../../public"),
 	})
 
@@ -427,5 +439,155 @@ func TestRouterStaticRoutes(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected status 200 for %s, got %d", route, rec.Code)
 		}
+	}
+}
+
+func TestLegacyRouterSendTextCompatibility(t *testing.T) {
+	messageService := &fakeMessageService{
+		textResult: &messages.SendResult{
+			SessionID:   "autenticaonline",
+			MessageID:   "wamid-compat",
+			ChatJID:     "5511999999999@s.whatsapp.net",
+			Recipient:   "5511999999999@s.whatsapp.net",
+			SenderJID:   "5511888888888@s.whatsapp.net",
+			MessageType: "text",
+			Status:      store.MessageStatusSent,
+		},
+	}
+	router := NewRouter(RouterDependencies{
+		Logger:         zerolog.Nop(),
+		AuthValidator:  fakeValidator{},
+		SessionService: &fakeSessionService{},
+		MessageService: messageService,
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/message/text", bytes.NewBufferString(`{"sessionId":"autenticaonline","phone":"5511999999999","message":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", "test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if messageService.lastSendTextSessionID != "autenticaonline" {
+		t.Fatalf("expected sessionId autenticaonline, got %s", messageService.lastSendTextSessionID)
+	}
+	if messageService.lastSendTextTo != "5511999999999" {
+		t.Fatalf("expected phone fallback, got %s", messageService.lastSendTextTo)
+	}
+	if messageService.lastSendTextText != "hello" {
+		t.Fatalf("expected message fallback, got %s", messageService.lastSendTextText)
+	}
+}
+
+func TestLegacyRouterQRCode(t *testing.T) {
+	sessionService := &fakeSessionService{
+		qrResult: &session.QRCodeResult{
+			SessionID: "autenticaonline",
+			QRCode:    "qr-payload",
+		},
+	}
+	router := NewRouter(RouterDependencies{
+		Logger:         zerolog.Nop(),
+		AuthValidator:  fakeValidator{},
+		SessionService: sessionService,
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/qr?id=autenticaonline", nil)
+	req.Header.Set("X-API-Key", "test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if sessionService.lastGetQRSessionID != "autenticaonline" {
+		t.Fatalf("expected session id autenticaonline, got %s", sessionService.lastGetQRSessionID)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["qrCode"] != "qr-payload" || body["qr"] != "qr-payload" {
+		t.Fatalf("unexpected qr payload: %+v", body)
+	}
+}
+
+func TestLegacyRouterReconnect(t *testing.T) {
+	sessionService := &fakeSessionService{
+		reconnect: &store.Session{
+			SessionID: "autenticaonline",
+			Status:    store.SessionStatusConnected,
+		},
+	}
+	router := NewRouter(RouterDependencies{
+		Logger:         zerolog.Nop(),
+		AuthValidator:  fakeValidator{},
+		SessionService: sessionService,
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/reconnect?id=autenticaonline", nil)
+	req.Header.Set("X-API-Key", "test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if sessionService.lastReconnectSessionID != "autenticaonline" {
+		t.Fatalf("expected reconnect session id autenticaonline, got %s", sessionService.lastReconnectSessionID)
+	}
+
+	var body struct {
+		Status  string        `json:"status"`
+		Session store.Session `json:"session"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Status != "ok" || body.Session.SessionID != "autenticaonline" {
+		t.Fatalf("unexpected reconnect payload: %+v", body)
+	}
+}
+
+func TestLegacyRouterTest(t *testing.T) {
+	router := NewRouter(RouterDependencies{
+		Logger:         zerolog.Nop(),
+		AuthValidator:  fakeValidator{},
+		SessionService: &fakeSessionService{},
+		MessageService: &fakeMessageService{},
+		WebhookService: &fakeWebhookService{},
+		ReadService:    &fakeReadService{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req.Header.Set("X-API-Key", "test")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("unexpected test payload: %+v", body)
 	}
 }
