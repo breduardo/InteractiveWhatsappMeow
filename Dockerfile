@@ -5,14 +5,14 @@ FROM golang:1.25-bookworm AS builder
 WORKDIR /src
 
 COPY go.mod go.sum ./
-RUN go mod download
+COPY vendor ./vendor
 
 COPY cmd ./cmd
 COPY internal ./internal
 COPY migrations ./migrations
 COPY public ./public
 
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/interactivewhatsmeow ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -trimpath -ldflags="-s -w" -o /out/interactivewhatsmeow ./cmd/api
 
 FROM golang:1.25-bookworm
 
